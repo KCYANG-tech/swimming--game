@@ -1,0 +1,26 @@
+{
+	"pages": [
+		{ "path": "pages/auth/login", "style": { "navigationBarTitleText": "登录" } },
+		{ "path": "pages/auth/register", "style": { "navigationBarTitleText": "注册" } },
+		{ "path": "pages/test-sensors", "style": { "navigationBarTitleText": "传感器测试" } },
+		{ "path": "pages/swimming/index", "style": { "navigationBarTitleText": "游泳游戏" } },
+		{ "path": "pages/profile/my", "style": { "navigationBarTitleText": "我的" } }
+	],
+	"subPackages": [],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "游泳游戏",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"tabBar": {
+		"color": "#999999",
+		"selectedColor": "#007AFF",
+		"backgroundColor": "#ffffff",
+		"list": [
+			{ "pagePath": "pages/swimming/index", "text": "游泳" },
+			{ "pagePath": "pages/test-sensors", "text": "传感器测试" },
+			{ "pagePath": "pages/profile/my", "text": "我的" }
+		]
+	}
+}
