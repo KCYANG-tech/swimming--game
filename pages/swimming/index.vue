@@ -3,9 +3,6 @@
     <!-- 页面头部 -->
     <view class="page-header">
       <view class="header-content">
-        <button class="back-button" @click="goBack">
-          ← 返回
-        </button>
         <text class="page-title">游泳游戏</text>
         <view class="header-spacer"></view>
       </view>
@@ -29,7 +26,7 @@
       <view class="modal-content">
         <view class="modal-header">
           <text class="modal-title">游戏说明</text>
-          <button class="close-button" @click="closeInstructions">×</button>
+          <button class="close-button" @click="closeInstructions" @tap="closeInstructions">×</button>
         </view>
         
         <view class="modal-body">
@@ -56,7 +53,7 @@
         </view>
         
         <view class="modal-footer">
-          <button class="start-game-button" @click="startGame">
+          <button class="start-game-button" @click="startGame" @tap="startGame">
             开始游戏
           </button>
         </view>
@@ -64,16 +61,16 @@
     </view>
 
   <!-- 规则浮动按钮 -->
-  <button class="rules-fab" @click="openInstructions">规则</button>
+  <button class="rules-fab" @click="openInstructions" @tap="openInstructions">规则</button>
 
     <!-- 传感器权限提示 -->
     <view v-if="showPermissionTip" class="permission-tip">
       <view class="tip-content">
         <text class="tip-text">需要传感器权限才能进行游戏</text>
-        <button class="tip-button" @click="requestPermission">
+        <button class="tip-button" @click="requestPermission" @tap="requestPermission">
           授权
         </button>
-        <button class="tip-close" @click="closePermissionTip">
+        <button class="tip-close" @click="closePermissionTip" @tap="closePermissionTip">
           ×
         </button>
       </view>
@@ -109,21 +106,6 @@ export default {
     /**
      * 返回上一页
      */
-    goBack() {
-      if (this.gameStarted) {
-        uni.showModal({
-          title: '确认退出',
-          content: '游戏正在进行中，确定要退出吗？',
-          success: (res) => {
-            if (res.confirm) {
-              uni.navigateBack()
-            }
-          }
-        })
-      } else {
-        uni.navigateBack()
-      }
-    },
 
     /**
      * 检查传感器支持
@@ -204,7 +186,14 @@ export default {
       const tick = () => {
         if (this.countdown <= 0) {
           this.countdown = 0
-          this.$refs.gameUI.startGame()
+          const ui = this.$refs.gameUI
+          if (ui && ui.sensorReady) {
+            ui.startGame()
+          } else if (ui && typeof ui.enableJoystickAndStart === 'function') {
+            ui.enableJoystickAndStart()
+          } else if (ui && typeof ui.enableJoystickMode === 'function') {
+            ui.enableJoystickMode(); ui.startGame()
+          }
         } else {
           this.countdown--
           setTimeout(tick, 1000)
@@ -306,14 +295,6 @@ export default {
   margin: 0 auto;
 }
 
-.back-button {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 2rpx solid rgba(255, 255, 255, 0.3);
-  padding: 12rpx 24rpx;
-  border-radius: 24rpx;
-  font-size: 24rpx;
-}
 
 .page-title {
   color: white;

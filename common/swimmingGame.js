@@ -78,6 +78,14 @@ class SwimmingGame {
     // 游戏循环
     this.gameLoop = null;
     this.lastTime = 0;
+    // rAF 封装（H5 优先，缺失则使用 setTimeout 兜底）
+    const root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : {});
+    this._raf = (root && typeof root.requestAnimationFrame === 'function')
+      ? root.requestAnimationFrame.bind(root)
+      : (cb) => setTimeout(() => cb((typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now())), 16);
+    this._caf = (root && typeof root.cancelAnimationFrame === 'function')
+      ? root.cancelAnimationFrame.bind(root)
+      : (id) => clearTimeout(id);
   // 生成计时器（基于时间的生成逻辑）
   this._obstacleTimer = 0;
   this._coinTimer = 0;
@@ -232,10 +240,10 @@ class SwimmingGame {
       this.lastTime = currentTime;
       
       this.updateGame(deltaTime);
-      this._rafId = requestAnimationFrame(this.gameLoop);
+      this._rafId = this._raf(this.gameLoop);
     };
     
-    this._rafId = requestAnimationFrame(this.gameLoop);
+    this._rafId = this._raf(this.gameLoop);
   }
 
   /**
@@ -243,7 +251,7 @@ class SwimmingGame {
    */
   stopGameLoop() {
     if (this._rafId) {
-      cancelAnimationFrame(this._rafId);
+      this._caf(this._rafId);
       this._rafId = null;
     }
     this.gameLoop = null;

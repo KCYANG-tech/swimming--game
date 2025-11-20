@@ -1,0 +1,9 @@
+
+.auth-page[data-v-4bb68961]{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#87CEEB,#4682B4)}
+.card[data-v-4bb68961]{width:80%;max-width:16.25rem;background:rgba(0,0,0,.35);padding:1.25rem;border-radius:0.75rem;color:#fff;display:flex;flex-direction:column;gap:0.625rem}
+.title[data-v-4bb68961]{font-size:1.1875rem;font-weight:600;margin-bottom:0.3125rem}
+.ipt[data-v-4bb68961]{background:rgba(255,255,255,.15);border:none;border-radius:0.5rem;padding:0.625rem;color:#fff}
+.btn[data-v-4bb68961]{background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:0.625rem;padding:0.5625rem}
+.btn.primary[data-v-4bb68961]{background:linear-gradient(45deg,#4ECDC4,#556270)}
+.err[data-v-4bb68961]{color:#ffd2d2}
+.ok[data-v-4bb68961]{color:#d2ffd8}

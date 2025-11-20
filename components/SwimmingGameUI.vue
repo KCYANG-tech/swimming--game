@@ -3,18 +3,25 @@
     <!-- 权限失败覆盖层 -->
     <view v-if="permissionError" class="overlay">
       <view class="overlay-box">
-        <text class="ov-title">需要传感器权限</text>
-        <text class="ov-msg">{{ permissionError }}</text>
-        <button class="btn primary" @click="retryPermission">重试授权</button>
+        <text class="ov-title">传感器不可用</text>
+        <text class="ov-msg">
+          {{ permissionError }}
+          <block v-if="!sensorReady">如果多次授权失败，仍可使用“摇杆模式”体验游戏。</block>
+        </text>
+        <view style="display:flex; gap:24rpx; flex-wrap:wrap; justify-content:center">
+          <button class="btn primary" @click="retryPermission" @tap="retryPermission">重试授权</button>
+          <button class="btn" @click="enableJoystickMode" @tap="enableJoystickMode">仅摇杆模式</button>
+        </view>
       </view>
     </view>
     <!-- Ready Screen -->
     <view v-if="gameState==='ready'" class="panel start">
       <text class="title">游泳游戏</text>
       <text class="subtitle">倾斜手机来控制方向，收集金币并躲避障碍</text>
-      <button class="btn primary" :disabled="!sensorReady" @click="startGame">
+      <button class="btn primary" :disabled="!sensorReady" @click="startGame" @tap="startGame" @touchstart="startGame">
         {{ sensorReady ? '开始游戏' : '等待传感器权限' }}
       </button>
+      <button class="btn" @click="enableJoystickAndStart" @tap="enableJoystickAndStart" @touchstart="enableJoystickAndStart">改用摇杆开始</button>
       <view class="tips">
         <text>📱 倾斜手机：左右/前后控制方向</text>
         <text>🎯 收集金币，避开障碍物</text>
@@ -29,13 +36,13 @@
         <view class="hud-item"><text class="label">距离</text><text class="val">{{ distanceDisplay }}m</text></view>
         <view class="hud-item"><text class="label">速度</text><text class="val">{{ speedDisplay }}km/h</text></view>
         <view class="hud-item"><text class="label">剩余</text><text class="val">{{ timeDisplay }}</text></view>
-  <view class="hud-item"><text class="label">生命</text><text class="val">{{ livesHearts }}</text></view>
-  <!-- 已改为倾斜控制，移除挥臂统计 -->
+        <view class="hud-item"><text class="label">生命</text><text class="val">{{ livesHearts }}</text></view>
+        <!-- 已改为倾斜控制，移除挥臂统计 -->
         <view class="hud-item"><text class="label">最高速</text><text class="val">{{ maxSpeedDisplay }}km/h</text></view>
       </view>
       <!-- 大号生命徽章 -->
       <view class="life-badge" aria-label="生命">{{ livesHearts }}</view>
-      <view class="game-area">
+  <view class="game-area">
         <!-- Player -->
         <view class="player" :class="{swimming:isSwimming}" :style="playerStyle">🏊‍♂️</view>
         <!-- Obstacles -->
@@ -137,6 +144,8 @@ export default {
       , stickActive: false
       , _stickMoveHandler: null
       , _stickEndHandler: null
+      , _autoStartAttempted: false
+      , _joystickRect: null
     }
   },
   computed: {
@@ -184,54 +193,107 @@ export default {
     this.cleanup()
   },
   methods: {
-    async initGame() {
-      this.sensorManager = new SensorManager()
-      this.sensorManager.onMotion(this.handleMotion)
-      this.sensorManager.onError(err => console.error('传感器错误', err))
-
-      this.swimmingGame = new SwimmingGame()
-      this.swimmingGame.onStateChange(state => { this.gameState = state })
-      this.swimmingGame.onScoreUpdate(score => { this.gameData.score = score })
-      this.swimmingGame.onGameOver(data => { console.log('GameOver', data) })
-      this.swimmingGame.onGameOver(data => {
-        // 同步分数到本地存储供“我的”页面读取
-        try {
-          const prevBest = uni.getStorageSync('bestScore')
-          if (!prevBest || data.score > prevBest) {
-            uni.setStorageSync('bestScore', data.score)
-          }
-          uni.setStorageSync('recentScore', data.score)
-          // 记录结束信息以用于界面显示
-          this.endReason = data && data.endReason ? data.endReason : null
-          if (data && typeof data.lives === 'number') {
-            // 确保结束面板生命显示与最终状态一致
-            this.gameData.lives = data.lives
-          }
-          // 最长一局用时（毫秒）
-          const prevLongest = Number(uni.getStorageSync('longestGameMs') || 0)
-          const nowTime = Number(data && data.time ? data.time : 0)
-          if (!isNaN(nowTime) && nowTime > prevLongest) {
-            uni.setStorageSync('longestGameMs', nowTime)
-          }
-          // 累计总局数与总金币
-          const prevGames = Number(uni.getStorageSync('totalGames') || 0)
-          uni.setStorageSync('totalGames', prevGames + 1)
-          const prevCoins = Number(uni.getStorageSync('totalCoins') || 0)
-          const addCoins = (typeof data.score === 'number' && data.score > 0) ? data.score : 0
-          uni.setStorageSync('totalCoins', prevCoins + addCoins)
-        } catch(e) { console.warn('保存分数失败', e) }
-      })
-      this.swimmingGame.init()
-
-      // 请求权限并开始监听
+    _getEventHost(){
+      const w = (typeof window !== 'undefined' && window && typeof window.addEventListener === 'function') ? window : null
+      if (w) return w
+      const d = (typeof document !== 'undefined' && document && typeof document.addEventListener === 'function') ? document : null
+      return d
+    },
+    _getViewportSize(){
+      const sys = (typeof uni !== 'undefined' && uni && uni.getSystemInfoSync) ? uni.getSystemInfoSync() : null
+      const width = (typeof window !== 'undefined' && window && typeof window.innerWidth === 'number') ? window.innerWidth : (sys ? sys.windowWidth : 750)
+      const height = (typeof window !== 'undefined' && window && typeof window.innerHeight === 'number') ? window.innerHeight : (sys ? sys.windowHeight : 1334)
+      return { width, height }
+    },
+    _measureJoystick(cb){
       try {
-        await this.sensorManager.initialize()
-        this.sensorManager.startListening()
-        this.sensorReady = true
-        this.permissionError = ''
-      } catch(e) {
-        console.warn('传感器未就绪:', e.message)
-        this.permissionError = e.message || '无法获取传感器'
+        const q = (typeof uni !== 'undefined' && uni && uni.createSelectorQuery) ? uni.createSelectorQuery().in(this) : null
+        if (!q) { if (cb) cb(null); return }
+        q.select('.joystick').boundingClientRect(rect => {
+          if (rect) this._joystickRect = rect
+          if (cb) cb(rect)
+        }).exec(()=>{})
+      } catch(e){ if (cb) cb(null) }
+    },
+    _extractPoint(e){
+      const t = (e && (e.touches && e.touches[0])) || (e && (e.changedTouches && e.changedTouches[0])) || e || {}
+      const x = t.clientX ?? t.pageX ?? (e && e.detail && e.detail.x) ?? 0
+      const y = t.clientY ?? t.pageY ?? (e && e.detail && e.detail.y) ?? 0
+      const target = t.target || (e && e.target) || null
+      return { x, y, target }
+    },
+    async initGame() {
+      // 延迟到 plusready 后再初始化（原生 APP 内确保 plus.* 可用）
+      const setup = async () => {
+        this.sensorManager = new SensorManager()
+        this.sensorManager.onMotion(this.handleMotion)
+        this.sensorManager.onError(err => console.error('传感器错误', err))
+
+        this.swimmingGame = new SwimmingGame()
+        this.swimmingGame.onStateChange(state => { this.gameState = state })
+        this.swimmingGame.onScoreUpdate(score => { this.gameData.score = score })
+        this.swimmingGame.onGameOver(data => { console.log('GameOver', data) })
+        this.swimmingGame.onGameOver(data => {
+          try {
+            const prevBest = uni.getStorageSync('bestScore')
+            if (!prevBest || data.score > prevBest) {
+              uni.setStorageSync('bestScore', data.score)
+            }
+            uni.setStorageSync('recentScore', data.score)
+            this.endReason = data && data.endReason ? data.endReason : null
+            if (data && typeof data.lives === 'number') {
+              this.gameData.lives = data.lives
+            }
+            const prevLongest = Number(uni.getStorageSync('longestGameMs') || 0)
+            const nowTime = Number(data && data.time ? data.time : 0)
+            if (!isNaN(nowTime) && nowTime > prevLongest) {
+              uni.setStorageSync('longestGameMs', nowTime)
+            }
+            const prevGames = Number(uni.getStorageSync('totalGames') || 0)
+            uni.setStorageSync('totalGames', prevGames + 1)
+            const prevCoins = Number(uni.getStorageSync('totalCoins') || 0)
+            const addCoins = (typeof data.score === 'number' && data.score > 0) ? data.score : 0
+            uni.setStorageSync('totalCoins', prevCoins + addCoins)
+          } catch(e) { console.warn('保存分数失败', e) }
+        })
+        this.swimmingGame.init()
+
+        try {
+          await this.sensorManager.initialize()
+          this.sensorManager.startListening()
+          this.sensorReady = true
+          this.permissionError = ''
+          console.log('[Sensor] 初始化成功 sensorReady=true')
+          uni.showToast({ title: '传感器就绪', icon: 'none' })
+        } catch(e) {
+          console.warn('传感器未就绪:', e.message)
+          this.permissionError = e.message || '无法获取传感器'
+          console.log('[Sensor] 初始化失败 permissionError=', this.permissionError)
+          uni.showToast({ title: '传感器失败', icon: 'none' })
+        }
+        // 5 秒后如果仍未开始且传感器未就绪，自动摇杆启动一次（只尝试一次）
+        setTimeout(()=>{
+          if(!this._autoStartAttempted && this.gameState==='ready' && !this.sensorReady) {
+            this._autoStartAttempted = true
+            console.log('[AutoStart] 传感器未就绪，自动切换摇杆启动')
+            this.enableJoystickAndStart()
+          }
+        },5000)
+      }
+      // H5 环境没有 plus: 直接初始化；APP-PLUS 需等待 plusready
+      if (typeof plus === 'undefined') {
+        // 浏览器或非 APP-PLUS 平台
+        await setup()
+      } else if (typeof plus === 'object') {
+        // APP 里尝试直接调用，如果失败再监听 plusready
+        try {
+          await setup()
+        } catch(e) {
+          console.log('[Init] 直接 setup 失败，等待 plusready', e.message)
+          document.addEventListener('plusready', setup, { once: true })
+        }
+      } else {
+        document.addEventListener('plusready', setup, { once: true })
       }
     },
     async retryPermission() {
@@ -245,8 +307,39 @@ export default {
         this.permissionError = e.message || '授权失败'
       }
     },
+    enableJoystickMode(){
+      // 启用纯摇杆模式：不再尝试传感器，允许开始游戏
+      this.joystickOnly = true
+      this.sensorReady = true
+      this.permissionError = ''
+      this.showDebugWheel = true // 默认展示摇杆面板
+      if(!this.swimmingGame){
+        // 兜底实例化
+        this.swimmingGame = new SwimmingGame()
+        this.swimmingGame.onStateChange(state => { this.gameState = state })
+        this.swimmingGame.onScoreUpdate(score => { this.gameData.score = score })
+        this.swimmingGame.onGameOver(data => { console.log('GameOver', data) })
+        this.swimmingGame.init()
+      }
+    },
+    enableJoystickAndStart(){
+      this.enableJoystickMode()
+      this.startGame()
+    },
     startGame() {
-      if(!this.sensorReady) return
+      console.log('[UI] startGame 被触发 sensorReady=', this.sensorReady)
+      if(!this.sensorReady) {
+        console.log('[UI] 传感器未就绪，尝试自动启用摇杆模式')
+        this.enableJoystickMode()
+      }
+      if(!this.swimmingGame){
+        console.log('[UI] swimmingGame 实例不存在，兜底创建')
+        this.swimmingGame = new SwimmingGame()
+        this.swimmingGame.onStateChange(state => { this.gameState = state })
+        this.swimmingGame.onScoreUpdate(score => { this.gameData.score = score })
+        this.swimmingGame.onGameOver(data => { console.log('GameOver', data) })
+        this.swimmingGame.init()
+      }
       this.swimmingGame.startGame()
       this.tickSync()
     },
@@ -278,20 +371,27 @@ export default {
       }
     },
     startStick(e) {
-      const point = e.touches ? e.touches[0] : e
+      const point = this._extractPoint(e)
       this.stickActive = true
-      this.updateStick(point)
+      if (!this._joystickRect) {
+        this._measureJoystick(() => { this.updateStick(point) })
+      } else {
+        this.updateStick(point)
+      }
       // 绑定已绑定到组件实例的监听器，避免 this 丢失
       if (!this._stickMoveHandler) this._stickMoveHandler = (ev)=>this.onStickMove(ev)
       if (!this._stickEndHandler) this._stickEndHandler = ()=>this.endStick()
-      window.addEventListener('touchmove', this._stickMoveHandler, { passive:false })
-      window.addEventListener('mousemove', this._stickMoveHandler)
-      window.addEventListener('touchend', this._stickEndHandler)
-      window.addEventListener('mouseup', this._stickEndHandler)
+      const host = this._getEventHost()
+      if (host) {
+        host.addEventListener('touchmove', this._stickMoveHandler, { passive:false })
+        host.addEventListener('mousemove', this._stickMoveHandler)
+        host.addEventListener('touchend', this._stickEndHandler)
+        host.addEventListener('mouseup', this._stickEndHandler)
+      }
     },
     onStickMove(e) {
       if(!this.stickActive) return
-      const point = e.touches ? e.touches[0] : e
+      const point = this._extractPoint(e)
       this.updateStick(point)
       if(e.cancelable) e.preventDefault()
     },
@@ -300,30 +400,26 @@ export default {
       this.stickX = 0
       this.stickY = 0
       if (this.swimmingGame) this.swimmingGame.setDirection(0,0)
-      if (this._stickMoveHandler) {
-        window.removeEventListener('touchmove', this._stickMoveHandler)
-        window.removeEventListener('mousemove', this._stickMoveHandler)
-      }
-      if (this._stickEndHandler) {
-        window.removeEventListener('touchend', this._stickEndHandler)
-        window.removeEventListener('mouseup', this._stickEndHandler)
+      const host = this._getEventHost()
+      if (host) {
+        if (this._stickMoveHandler) {
+          host.removeEventListener('touchmove', this._stickMoveHandler)
+          host.removeEventListener('mousemove', this._stickMoveHandler)
+        }
+        if (this._stickEndHandler) {
+          host.removeEventListener('touchend', this._stickEndHandler)
+          host.removeEventListener('mouseup', this._stickEndHandler)
+        }
       }
     },
     updateStick(point) {
-      // 在 uni-app H5 中，$refs 可能不是原生 DOM，增加多重兜底
-      let rect = null
-      const refEl = this.$refs && this.$refs.joystick
-      if (refEl && typeof refEl.getBoundingClientRect === 'function') {
-        rect = refEl.getBoundingClientRect()
-      } else if (this.$el && typeof this.$el.querySelector === 'function') {
-        const el = this.$el.querySelector('.joystick')
-        if (el && typeof el.getBoundingClientRect === 'function') rect = el.getBoundingClientRect()
-      }
-      if(!rect) return
+      // 优先使用已测量的矩形；若缺失则尝试测量后再计算
+      let rect = this._joystickRect
+      if(!rect) { this._measureJoystick(() => this.updateStick(point)); return }
       const cx = rect.left + rect.width/2
       const cy = rect.top + rect.height/2
-      const dx = point.clientX - cx
-      const dy = point.clientY - cy
+      const dx = point.x - cx
+      const dy = point.y - cy
       const maxR = rect.width/2 - 20
       const dist = Math.sqrt(dx*dx + dy*dy)
       const clamped = Math.min(dist, maxR)
@@ -336,39 +432,44 @@ export default {
     },
     startWheelDrag(e) {
       // 支持 touch 与 mouse
-      const point = e.touches ? e.touches[0] : e;
+      const point = this._extractPoint(e);
       // 如果在摇杆区域按下，则不启动轮盘拖拽，避免与摇杆冲突
       const target = e.target || (e.touches && e.touches[0] && e.touches[0].target)
       if (this.stickActive || (target && target.closest && target.closest('.joystick'))) {
         return
       }
       this.wheelDragging = true;
-      this.wheelDragOffset.x = point.clientX - this.wheelPos.x;
-      this.wheelDragOffset.y = point.clientY - this.wheelPos.y;
+      this.wheelDragOffset.x = point.x - this.wheelPos.x;
+      this.wheelDragOffset.y = point.y - this.wheelPos.y;
       // 绑定移动和结束监听
-      window.addEventListener('touchmove', this.onWheelDrag, { passive:false });
-      window.addEventListener('mousemove', this.onWheelDrag);
-      window.addEventListener('touchend', this.endWheelDrag);
-      window.addEventListener('mouseup', this.endWheelDrag);
+      const host = this._getEventHost()
+      if (host) {
+        host.addEventListener('touchmove', this.onWheelDrag, { passive:false });
+        host.addEventListener('mousemove', this.onWheelDrag);
+        host.addEventListener('touchend', this.endWheelDrag);
+        host.addEventListener('mouseup', this.endWheelDrag);
+      }
     },
     onWheelDrag(e) {
       if(!this.wheelDragging) return;
-      const point = e.touches ? e.touches[0] : e;
-      const nx = point.clientX - this.wheelDragOffset.x;
-      const ny = point.clientY - this.wheelDragOffset.y;
+      const point = this._extractPoint(e);
+      const nx = point.x - this.wheelDragOffset.x;
+      const ny = point.y - this.wheelDragOffset.y;
       // 边界限制（视口内）
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
+      const { width: vw, height: vh } = this._getViewportSize();
       this.wheelPos.x = Math.max(20, Math.min(vw - 260, nx));
       this.wheelPos.y = Math.max(80, Math.min(vh - 260, ny));
       if(e.cancelable) e.preventDefault();
     },
     endWheelDrag() {
       this.wheelDragging = false;
-      window.removeEventListener('touchmove', this.onWheelDrag);
-      window.removeEventListener('mousemove', this.onWheelDrag);
-      window.removeEventListener('touchend', this.endWheelDrag);
-      window.removeEventListener('mouseup', this.endWheelDrag);
+      const host = this._getEventHost()
+      if (host) {
+        host.removeEventListener('touchmove', this.onWheelDrag);
+        host.removeEventListener('mousemove', this.onWheelDrag);
+        host.removeEventListener('touchend', this.endWheelDrag);
+        host.removeEventListener('mouseup', this.endWheelDrag);
+      }
     },
     handleMotion(data) {
       // 使用 orientation.gamma (左右) 与 orientation.beta (前后/上下) 转换为 tilt
@@ -381,6 +482,9 @@ export default {
       this.swimmingGame.setTilt(tiltX, tiltY)
     },
     tickSync() {
+      const raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+        ? window.requestAnimationFrame.bind(window)
+        : (cb) => setTimeout(() => cb((typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now())), 16)
       const sync = (ts) => {
         if (this.gameState === 'playing') {
           if (!this._lastSync || ts - this._lastSync >= this._syncInterval) {
@@ -390,10 +494,10 @@ export default {
             this.gameData = data
             this._lastSync = ts
           }
-          requestAnimationFrame(sync)
+          raf(sync)
         }
       }
-      requestAnimationFrame(sync)
+      raf(sync)
     },
     objectStyle(obj) {
       return { left: obj.x + '%', top: obj.y + '%', width: obj.size+'px', height: obj.size+'px' }
@@ -432,7 +536,7 @@ export default {
 .hud-item { text-align:center }
 .label { display:block; font-size:20rpx; opacity:.8 }
 .val { display:block; font-size:26rpx; font-weight:600 }
-.game-area { position:relative; width:100%; height:calc(100vh - 140rpx); }
+ .game-area { position:relative; width:100%; height:calc(100vh - 140rpx); }
 .player { position:absolute; font-size:50rpx; transform:translate(-50%,-50%); }
 .player.swimming { animation:swim .4s ease-in-out 2 }
 .obj { position:absolute; transform:translate(-50%,-50%); font-size:32rpx }

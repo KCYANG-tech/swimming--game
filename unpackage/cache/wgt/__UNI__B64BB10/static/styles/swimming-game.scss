@@ -1,0 +1,82 @@
+/* 全局样式 */
+page {
+  background-color: $background-color;
+  font-size: $font-size-base;
+  color: $text-color;
+}
+
+/* 游戏场景样式 */
+.game-container {
+  width: 100%;
+  height: 100vh;
+  background-color: $game-background;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 分数显示 */
+.score-display {
+  position: absolute;
+  top: $spacing-large;
+  right: $spacing-large;
+  font-size: $font-size-large;
+  color: $score-color;
+  z-index: 100;
+}
+
+/* 级别显示 */
+.level-display {
+  position: absolute;
+  top: $spacing-large;
+  left: $spacing-large;
+  font-size: $font-size-large;
+  color: $level-color;
+  z-index: 100;
+}
+
+/* 游戏控制按钮 */
+.game-controls {
+  position: absolute;
+  bottom: $spacing-xl;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: $spacing-base;
+  z-index: 100;
+}
+
+.control-btn {
+  padding: $spacing-base $spacing-xl;
+  background-color: $primary-color;
+  color: #FFFFFF;
+  border-radius: $border-radius-base;
+  font-size: $font-size-medium;
+  
+  &.disabled {
+    opacity: 0.6;
+  }
+}
+
+/* 传感器数据显示 */
+.sensor-data {
+  padding: $spacing-large;
+  background-color: #FFFFFF;
+  border-radius: $border-radius-large;
+  margin: $spacing-base;
+  
+  .data-item {
+    margin-bottom: $spacing-base;
+    
+    .label {
+      color: $text-color;
+      font-size: $font-size-base;
+      margin-bottom: $spacing-mini;
+    }
+    
+    .value {
+      color: $primary-color;
+      font-size: $font-size-medium;
+      font-weight: bold;
+    }
+  }
+}

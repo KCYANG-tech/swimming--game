@@ -3,7 +3,7 @@
 		{ "path": "pages/auth/login", "style": { "navigationBarTitleText": "登录" } },
 		{ "path": "pages/auth/register", "style": { "navigationBarTitleText": "注册" } },
 		{ "path": "pages/test-sensors", "style": { "navigationBarTitleText": "传感器测试" } },
-		{ "path": "pages/swimming/index", "style": { "navigationBarTitleText": "游泳游戏" } },
+		{ "path": "pages/swimming/index", "style": { "navigationBarTitleText": "游泳游戏", "navigationStyle": "custom" } },
 		{ "path": "pages/profile/my", "style": { "navigationBarTitleText": "我的" } }
 	],
 	"subPackages": [],

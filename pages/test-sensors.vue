@@ -16,6 +16,7 @@
       <button class="btn" @click="resetCalib">校准零点</button>
       <button class="btn" @click="clearLogs">清除日志</button>
       <button class="btn" @click="copyLogs">复制日志</button>
+      <button class="btn" @click="forceRetest">重新探测</button>
     </view>
 
     <view class="section">
@@ -85,6 +86,16 @@
       </view>
     </view>
 
+    <view class="section">
+      <text class="sec-title">原生通道</text>
+      <view class="stats">
+        <text>plus对象：{{ plusDebug.hasPlus ? '存在' : '无' }}</text>
+        <text>plusready：{{ plusDebug.plusReady ? '已触发' : '未触发' }}</text>
+        <text>accelerometer：{{ plusDebug.hasAccel ? '有' : '无' }}</text>
+        <text>compass：{{ plusDebug.hasCompass ? '有' : '无' }}</text>
+      </view>
+    </view>
+
     <view class="tiltbox-wrap">
       <text class="sec-title">倾斜可视化</text>
       <view class="tiltbox">
@@ -108,6 +119,7 @@ export default {
       listening: false,
       permGranted: null,
       support: { isSupported:false, needsPermission:false, apis:{} },
+      plusDebug: { hasPlus:false, plusReady:false, hasAccel:false, hasCompass:false },
       alpha: 0.8,
       windowSize: 100,
       // 原始与滤波数据
@@ -148,15 +160,30 @@ export default {
     }
   },
   mounted(){
-    // 平台支持检查
-    try {
-      const info = SensorUtils.checkPlatformSupport()
-      this.support = info
-    } catch(e){}
-    this.sm = new SensorManager()
-    this.sm.onMotion(this.onMotion)
-    this.sm.onOrientation(this.onOrientation)
-    this.sm.onError(err=>{ this.lastError = err && err.message ? err.message : String(err) })
+    const initSM = () => {
+      try {
+        const info = SensorUtils.checkPlatformSupport()
+        this.support = info
+      } catch(e){}
+      this.sm = new SensorManager()
+      this.sm.onMotion(this.onMotion)
+      this.sm.onOrientation(this.onOrientation)
+      this.sm.onError(err=>{ this.lastError = err && err.message ? err.message : String(err) })
+      this.plusDebug.hasPlus = typeof plus !== 'undefined'
+      if (this.plusDebug.hasPlus) {
+        this.plusDebug.hasAccel = !!(plus && plus.accelerometer)
+        this.plusDebug.hasCompass = !!(plus && plus.compass)
+      }
+    }
+    if (typeof plus === 'undefined') {
+      document.addEventListener('plusready', () => {
+        this.plusDebug.plusReady = true
+        initSM()
+      }, { once:true })
+    } else {
+      this.plusDebug.plusReady = true
+      initSM()
+    }
   },
   methods:{
     async requestPermission(){
@@ -173,7 +200,27 @@ export default {
       }
     },
     start(){
-      try{ this.sm.startListening(); this.listening = true; this.resetStats() }catch(e){ this.lastError=e.message }
+      try {
+        if (!this.sm) throw new Error('未初始化')
+        if (!this.sm.isInitialized) {
+          return this.requestPermission().then(()=>this.start())
+        }
+        this.sm.startListening();
+        this.listening = true; this.resetStats();
+        if (!this.support.isSupported) this.support.isSupported = true
+      } catch(e){ this.lastError=e.message }
+    },
+    forceRetest(){
+      this.plusDebug.hasPlus = typeof plus !== 'undefined'
+      if (this.plusDebug.hasPlus) {
+        this.plusDebug.hasAccel = !!plus.accelerometer
+        this.plusDebug.hasCompass = !!plus.compass
+      }
+      if (this.sm) this.sm.isInitialized = false
+      this.support.isSupported = false
+      this.permGranted = null
+      this.listening = false
+      uni.showToast({ title:'已重置探测', icon:'none' })
     },
     stop(){ this.sm.stopListening(); this.listening = false },
     resetCalib(){ this.oriZero = { ...this.oriRaw } },
